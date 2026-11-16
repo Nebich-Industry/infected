@@ -1,6 +1,7 @@
-mod commandes;
-use crate::commandes::join::JoinExecutor;
-use pumpkin_plugin_api::{Plugin, PluginMetadata, command::Command, permission::{Permission, PermissionDefault}, Context};
+mod commands;
+mod management;
+use crate::commands::{infected::InfectedExecutor, join::JoinExecutor, launch::LaunchExecutor};
+use pumpkin_plugin_api::{Context, Plugin, PluginMetadata, command::{Command, CommandNode}, permission::{Permission, PermissionDefault, PermissionLevel}};
 use tracing::info;
 
 struct InfectedPlugin;
@@ -29,13 +30,22 @@ impl Plugin for InfectedPlugin {
             children: Vec::new(),
         })?;
 
-        // 2. Construction des commandes avec alias et executeur
-        let join_names = vec!["join".to_string(), "j".to_string()];
-        let join_command = Command::new(&join_names, "Permet au joueur de rejoindre le mini jeu Infected.")
-            .execute(JoinExecutor);
+        context.register_permission(&Permission {
+            node: "infected::admin".to_string(),
+            description: "Permet au joueur d'accéder aux commandes administratives du mini jeu Infected.".to_string(),
+            default: PermissionDefault::Op(PermissionLevel::Three),
+            children: Vec::new(),
+        })?;
 
-        // 3. Enregistrement des commandes
-        context.register_command(join_command, "infected::join");
+        // 2. Construction de la commande infected avec sous-commandes
+        let infected_aliases = vec!["infected".to_string(), "inf".to_string()];
+        let infected_command = Command::new(&infected_aliases, "Commandes du plugin Infected.")
+            .execute(InfectedExecutor)
+            .then(CommandNode::literal("join").execute(JoinExecutor))
+            .then(CommandNode::literal("launch").execute(LaunchExecutor));
+
+        // 3. Enregistrement de la commande
+        context.register_command(infected_command, "infected::join");
 
         info!("Chargement du plugin Infected réussi !");
         Ok(())

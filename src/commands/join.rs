@@ -13,6 +13,12 @@ impl CommandHandler for JoinExecutor {
         _args: ConsumedArgs,
     ) -> Result<i32, CommandError> {
         let player = sender.as_player().ok_or_else(|| CommandError::InvalidRequirement)?;
+
+        if !player.has_permission("infected::join") {
+            sender.send_message(TextComponent::text("Vous n'avez pas la permission de rejoindre le mini jeu Infected."));
+            return Ok(0);
+        }
+
         let world = server.get_all_worlds()
             .into_iter()
             .find(|w| w.get_name() == "infected_world")
