@@ -1,4 +1,4 @@
-use pumpkin_plugin_api::{Server, command::{CommandError, CommandSender, ConsumedArgs}, commands::CommandHandler, text::TextComponent};
+use pumpkin_plugin_api::{Server, command::{CommandError, CommandSender, ConsumedArgs}, commands::CommandHandler, player::{Sound, SoundCategory}, text::TextComponent};
 
 use crate::management::session::{GameState, game_session};
 
@@ -23,6 +23,22 @@ impl CommandHandler for LaunchExecutor {
         {
             let mut session = game_session().lock().expect("Echec du verrouillage de la session de jeu");
             session.set_state(GameState::Active);
+        }
+
+        // Affiche les nombres dans l'ordre 5 à 0 aux joueurs dans le monde "infected" et joue un son pour chaque nombre
+        let players = server.get_players_in_world(
+            server.get_world_by_name("infected").ok_or_else(|| CommandError::InvalidRequirement)?
+        );
+        for seconds in (0..=5).rev() {
+            for player in players.iter().clone() {
+                player.show_title(TextComponent::text(&seconds.to_string()));
+                player.play_sound(Sound::BlockNoteBlockHarp, SoundCategory::Master, 100.0, 1.0);
+            }
+        }
+
+        for player in players {
+            player.show_title(TextComponent::text("Lancement de la partie"));
+            player.show_subtitle(TextComponent::text("Bonne chance à tous !"));
         }
 
         server.broadcast("Le mini jeu Infected a été lancé ! Bonne chance à tous les joueurs !");
