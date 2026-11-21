@@ -15,6 +15,6 @@ impl CommandHandler for InfectedExecutor {
     ) -> Result<i32, CommandError> {
         sender.send_message(TextComponent::text("Utilisation: /infected <command>"));
         sender.send_message(TextComponent::text("Commandes disponibles: join"));
-        return Ok(0);
+        Ok(0)
     }
 }
