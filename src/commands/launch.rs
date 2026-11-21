@@ -1,3 +1,5 @@
+use std::{thread, time::Duration};
+
 use pumpkin_plugin_api::{Server, command::{CommandError, CommandSender, ConsumedArgs}, commands::CommandHandler, player::{Sound, SoundCategory}, text::TextComponent};
 
 use crate::management::{session::{GameState, game_session}, world::world_name};
@@ -29,10 +31,14 @@ impl CommandHandler for LaunchExecutor {
         let players = server.get_players_in_world(
             server.get_world_by_name(world_name().lock().expect("Echec du verrouillage du nom du monde").as_str()).ok_or_else(|| CommandError::InvalidRequirement)?
         );
+        
         for seconds in (0..=5).rev() {
             for player in players.iter().clone() {
                 player.show_title(TextComponent::text(&seconds.to_string()));
                 player.play_sound(Sound::BlockNoteBlockHarp, SoundCategory::Master, 100.0, 1.0);
+            }
+            if seconds > 0 {
+                thread::sleep(Duration::from_secs(1));
             }
         }
 
