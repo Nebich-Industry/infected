@@ -1,5 +1,9 @@
 # Plugin Infected
 
+## Licence
+
+Ce projet est distribué sous licence MIT. Voir le fichier [LICENSE](LICENSE).
+
 ## Installation
 
 ### Gestion des mondes
