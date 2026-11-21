@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 pub enum GameState {
     Waiting,
     Active,
-    Ended,
+    _Ended,
 }
 
 pub struct GameSession {
