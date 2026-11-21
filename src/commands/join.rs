@@ -1,6 +1,11 @@
-use pumpkin_plugin_api::{Server, command::{CommandError, CommandSender, ConsumedArgs}, commands::CommandHandler, text::TextComponent};
+use pumpkin_plugin_api::{
+    Server,
+    command::{CommandError, CommandSender, ConsumedArgs},
+    commands::CommandHandler,
+    text::TextComponent,
+};
 
-use crate::management::world::world_name;
+use crate::management::world::current_world;
 
 fn is_already_in_world(current_world: &str, target_world: &str) -> bool {
     current_world == target_world
@@ -14,17 +19,24 @@ impl CommandHandler for JoinExecutor {
         server: Server,
         _args: ConsumedArgs,
     ) -> Result<i32, CommandError> {
-        let player = sender.as_player().ok_or_else(|| CommandError::InvalidRequirement)?;
+        let player = sender
+            .as_player()
+            .ok_or_else(|| CommandError::InvalidRequirement)?;
 
         if !player.has_permission("infected::join") {
-            sender.send_message(TextComponent::text("Vous n'avez pas la permission de rejoindre le mini jeu Infected."));
+            sender.send_message(TextComponent::text(
+                "Vous n'avez pas la permission de rejoindre le mini jeu Infected.",
+            ));
             return Ok(0);
         }
 
-        let world = server.get_all_worlds()
-            .into_iter()
-            .find(|w| w.get_name() == world_name().lock().expect("Echec du verrouillage du nom du monde").as_str())
-            .ok_or_else(|| CommandError::InvalidRequirement)?;
+        let (world, config) = match current_world(&server) {
+            Ok(world) => world,
+            Err(error) => {
+                sender.send_message(TextComponent::text(&error));
+                return Ok(0);
+            }
+        };
 
         // Vérifie si le joueur est déjà dans le monde
         if is_already_in_world(&player.get_world().get_name(), &world.get_name()) {
@@ -33,9 +45,15 @@ impl CommandHandler for JoinExecutor {
         }
 
         // Ajoute le joueur au monde
-        let world_spawn = world.get_spawn_location().pos;
-        player.teleport_world(world, (world_spawn.x.into(), world_spawn.y.into(), world_spawn.z.into()), Some(player.get_yaw()), Some(player.get_pitch()));
-        sender.send_message(TextComponent::text("Vous avez rejoint le monde avec succès !"));
+        player.teleport_world(
+            world,
+            (config.spawn.x, config.spawn.y, config.spawn.z),
+            Some(player.get_yaw()),
+            Some(player.get_pitch()),
+        );
+        sender.send_message(TextComponent::text(
+            "Vous avez rejoint le monde avec succès !",
+        ));
         Ok(1)
     }
 }

@@ -1,7 +1,12 @@
 mod commands;
 mod management;
 use crate::commands::{infected::InfectedExecutor, join::JoinExecutor, launch::LaunchExecutor};
-use pumpkin_plugin_api::{Context, Plugin, PluginMetadata, command::{Command, CommandNode}, permission::{Permission, PermissionDefault, PermissionLevel}};
+use pumpkin_plugin_api::{
+    Context, Plugin, PluginMetadata,
+    command::{Command, CommandNode},
+    permission::{Permission, PermissionDefault, PermissionLevel},
+    permissions::FS_WRITE_DATA,
+};
 use tracing::info;
 
 struct InfectedPlugin;
@@ -17,7 +22,7 @@ impl Plugin for InfectedPlugin {
             authors: vec!["Nebich_".into()],
             description: "Un plugin développé avec amour pour jouer à un mini jeu de survie à une invasion de zombies.".into(),
             dependencies: vec![],
-            permissions: vec![],
+            permissions: vec![FS_WRITE_DATA.to_string()],
         }
     }
 
@@ -32,10 +37,14 @@ impl Plugin for InfectedPlugin {
 
         context.register_permission(&Permission {
             node: "infected::admin".to_string(),
-            description: "Permet au joueur d'accéder aux commandes administratives du mini jeu Infected.".to_string(),
+            description:
+                "Permet au joueur d'accéder aux commandes administratives du mini jeu Infected."
+                    .to_string(),
             default: PermissionDefault::Op(PermissionLevel::Three),
             children: Vec::new(),
         })?;
+
+        crate::management::world::load_worlds(&context)?;
 
         // 2. Construction de la commande infected avec sous-commandes
         let infected_aliases = vec!["infected".to_string(), "inf".to_string()];

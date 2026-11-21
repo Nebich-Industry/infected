@@ -13,10 +13,10 @@ Le plugin enregistre la commande racine `/infected`, avec `/inf` comme alias.
 | Commande | Permission | Fonction |
 | --- | --- | --- |
 | `/infected` ou `/inf` | `infected::join` (permission donnée à l'enregistrement de la commande) | Affiche l'aide d'utilisation. |
-| `/infected join` ou `/inf join` | `infected::join` | Téléporte le joueur dans le monde `infected_world`, à son point d'apparition. Ne fait rien si le joueur s'y trouve déjà. |
-| `/infected launch` ou `/inf launch` | `infected::admin` vérifiée par le gestionnaire de la sous-commande | Passe la session de jeu à l'état `Active` et annonce le lancement à tous les joueurs. |
+| `/infected join` ou `/inf join` | `infected::join` | Téléporte le joueur dans le monde courant choisi depuis `config.yml`, aux coordonnées `spawn` configurées. Ne fait rien si le joueur s'y trouve déjà. |
+| `/infected launch` ou `/inf launch` | `infected::admin` vérifiée par le gestionnaire de la sous-commande | Passe la session à l'état `Active`, affiche le décompte aux joueurs du monde courant, puis annonce le lancement. |
 
-Les sous-commandes doivent être exécutées par un joueur. La commande `join` requiert que le monde `infected_world` existe.
+Les sous-commandes doivent être exécutées par un joueur. Le plugin crée `config.yml` dans son dossier de données privé au premier chargement. Les mondes configurés y sont chargés ou créés, et le monde courant est sélectionné aléatoirement au démarrage.
 
 ## Organisation du code
 
