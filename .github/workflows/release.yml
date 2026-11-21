@@ -24,7 +24,7 @@ jobs:
       # et remplacer l'étape Build par :
       #   cargo build --release -Zbuild-std=std,panic_abort
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3 
 
       - name: Vérifier que le tag correspond à la version du Cargo.toml
         run: |
@@ -39,7 +39,7 @@ jobs:
         run: cargo test --target x86_64-unknown-linux-gnu
 
       - name: Build
-        run: cargo build --release   # utilise la cible de .cargo/config.toml
+        run: cargo build --locked --release   # utilise la cible de .cargo/config.toml
 
       - name: Préparer l'artefact
         run: |
