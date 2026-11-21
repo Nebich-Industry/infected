@@ -1,5 +1,7 @@
 use pumpkin_plugin_api::{Server, command::{CommandError, CommandSender, ConsumedArgs}, commands::CommandHandler, text::TextComponent};
 
+use crate::management::world::world_name;
+
 fn is_already_in_world(current_world: &str, target_world: &str) -> bool {
     current_world == target_world
 }
@@ -21,7 +23,7 @@ impl CommandHandler for JoinExecutor {
 
         let world = server.get_all_worlds()
             .into_iter()
-            .find(|w| w.get_name() == "infected_world")
+            .find(|w| w.get_name() == world_name().lock().expect("Echec du verrouillage du nom du monde").as_str())
             .ok_or_else(|| CommandError::InvalidRequirement)?;
 
         // Vérifie si le joueur est déjà dans le monde

@@ -1,6 +1,6 @@
 use pumpkin_plugin_api::{Server, command::{CommandError, CommandSender, ConsumedArgs}, commands::CommandHandler, player::{Sound, SoundCategory}, text::TextComponent};
 
-use crate::management::session::{GameState, game_session};
+use crate::management::{session::{GameState, game_session}, world::world_name};
 
 pub struct LaunchExecutor;
 impl CommandHandler for LaunchExecutor {
@@ -27,7 +27,7 @@ impl CommandHandler for LaunchExecutor {
 
         // Affiche les nombres dans l'ordre 5 à 0 aux joueurs dans le monde "infected" et joue un son pour chaque nombre
         let players = server.get_players_in_world(
-            server.get_world_by_name("infected").ok_or_else(|| CommandError::InvalidRequirement)?
+            server.get_world_by_name(world_name().lock().expect("Echec du verrouillage du nom du monde").as_str()).ok_or_else(|| CommandError::InvalidRequirement)?
         );
         for seconds in (0..=5).rev() {
             for player in players.iter().clone() {
