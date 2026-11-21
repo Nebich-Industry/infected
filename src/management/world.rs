@@ -50,7 +50,7 @@ pub fn load_worlds(context: &Context) -> Result<(), String> {
     let config_path = Path::new(&data_folder).join("config.yml");
     let config_contents = match fs::read_to_string(&config_path) {
         Ok(contents) => contents,
-        // Si le fichier de configuration n'existe pas, on crée le dossier et le fichier 
+        // Si le fichier de configuration n'existe pas, on crée le dossier et le fichier
         // avec la configuration par défaut
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let parent = config_path

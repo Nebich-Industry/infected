@@ -30,3 +30,11 @@ Pour lancer des tests unitaires en local il faut executer la commande :
 ```bash
 cargo test --target x86_64-pc-windows-msvc
 ```
+
+### Hook Git pre-push
+
+Le hook `.githooks/pre-push` vérifie le formatage, construit la version release et lance Clippy avant chaque push. Pour l'activer dans ce clone :
+
+```bash
+git config core.hooksPath .githooks
+```

@@ -1,0 +1,15 @@
+version: 'v0.0.3'
+workflows:
+    '.github/workflows/ci.yml':
+        - 'dtolnay/rust-toolchain@stable'
+        - 'Swatinem/rust-cache@v2.9.3'
+    '.github/workflows/release.yml':
+        - 'dtolnay/rust-toolchain@stable'
+        - 'Swatinem/rust-cache@v2.9.3'    
+dependencies:
+    'dtolnay/rust-toolchain@stable':
+        ref: 'stable'
+        commit: 'sha1-39008827e6b4319a349e9a42dfc90579dd25f1ca'
+    'Swatinem/rust-cache@v2.9.3':
+        ref: 'v2.9.3'
+        commit: 'sha1-d1527c8f67ef9af357290475d4af4b0fab8f12e0'    
