@@ -121,7 +121,7 @@ mod tests {
         let mut session = GameSession::new();
 
         assert_eq!(session.waiting_timer(), WAITING_DURATION_SECONDS);
-        assert!(session.tick_waiting_timer() == false);
+        assert!(!session.tick_waiting_timer());
         session.reset_waiting_timer(1);
         assert!(session.tick_waiting_timer());
         assert!(session.tick_waiting_timer());
