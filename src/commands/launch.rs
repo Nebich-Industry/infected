@@ -24,10 +24,25 @@ fn finish_countdown(seconds: u32, broadcast: impl FnOnce()) -> bool {
 // Execution du compte à rebours avant le lancement du mini-jeu Infected
 // Tant que les secondes ne sont pas écoulées, on affiche le nombre de secondes restantes
 // à tous les joueurs du monde sur lequel le mini-jeu est en cours.
+fn cancel_pending_launch() {
+    match game_session().lock() {
+        Ok(mut session) => session.cancel_launch_countdown(),
+        Err(error) => tracing::error!("Verrouillage de la session de jeu impossible : {error}"),
+    }
+}
+
+fn postpone_waiting_launch() {
+    match game_session().lock() {
+        Ok(mut session) => session.reset_waiting_timer(30),
+        Err(error) => tracing::error!("Verrouillage de la session de jeu impossible : {error}"),
+    }
+}
+
 fn schedule_countdown(world_name: String, seconds: u32, delay_ticks: u64) {
     schedule_delayed_task(delay_ticks, move |server| {
         let Some(world) = server.get_world_by_name(&world_name) else {
             tracing::error!("Le monde configuré {world_name} n'est plus chargé.");
+            cancel_pending_launch();
             return;
         };
         let players = server.get_players_in_world(world);
@@ -37,12 +52,165 @@ fn schedule_countdown(world_name: String, seconds: u32, delay_ticks: u64) {
             player.play_sound(Sound::BlockNoteBlockHarp, SoundCategory::Master, 100.0, 1.0);
         }
 
-        if !finish_countdown(seconds, || {
-            server
-                .broadcast("Le mini jeu Infected a été lancé ! Bonne chance à tous les joueurs !");
+        if !finish_countdown(seconds, || match start_game(&server, true) {
+            Ok(()) => server
+                .broadcast("Le mini jeu Infected a été lancé ! Bonne chance à tous les joueurs !"),
+            Err(error) => {
+                tracing::error!("Impossible de lancer le mini jeu Infected : {error}");
+                cancel_pending_launch();
+            }
         }) {
             schedule_countdown(world_name.clone(), seconds - 1, 20);
         }
+    });
+}
+
+fn start_game(server: &Server, is_admin_launch: bool) -> Result<(), String> {
+    if game_session()
+        .lock()
+        .map_err(|error| format!("Verrouillage de la session de jeu impossible : {error}"))?
+        .state()
+        == &GameState::Active
+    {
+        return Err("Une partie Infected est déjà en cours.".to_string());
+    }
+
+    if !is_admin_launch {
+        crate::management::player::choose_first_zombies(server)?;
+    }
+
+    crate::management::bonus::clear(server);
+    crate::management::player::give_starter_items(server)?;
+    {
+        let mut session = game_session()
+            .lock()
+            .map_err(|error| format!("Verrouillage de la session de jeu impossible : {error}"))?;
+        session.launch();
+    }
+
+    schedule_game_timer_tick();
+    schedule_survivor_arrow_tick();
+    crate::management::bonus::start_spawn_task();
+    crate::management::scoreboard::refresh_for_server(server);
+    Ok(())
+}
+
+pub fn start_waiting_task() {
+    schedule_waiting_tick();
+}
+
+fn schedule_waiting_tick() {
+    schedule_delayed_task(20, |server| {
+        let should_launch = match game_session().lock() {
+            Ok(mut session)
+                if session.state() != &GameState::Active && !session.launch_pending() =>
+            {
+                if session.state() == &GameState::Ended {
+                    session.end();
+                }
+                if session.waiting_timer() == 0 {
+                    true
+                } else {
+                    session.tick_waiting_timer()
+                }
+            }
+            Ok(_) => false,
+            Err(error) => {
+                tracing::error!("Verrouillage de la session de jeu impossible : {error}");
+                schedule_waiting_tick();
+                return;
+            }
+        };
+
+        if should_launch {
+            let enough_players = match current_world(&server) {
+                Ok((world, _)) => server.get_players_in_world(world).len() > 2,
+                Err(error) => {
+                    tracing::error!(
+                        "Impossible de vérifier les joueurs avant le lancement : {error}"
+                    );
+                    false
+                }
+            };
+
+            if enough_players {
+                if let Err(error) = start_game(&server, false) {
+                    tracing::error!("Impossible de lancer automatiquement la partie : {error}");
+                    postpone_waiting_launch();
+                } else {
+                    server.broadcast("Le mini jeu Infected a été lancé automatiquement !");
+                }
+            } else {
+                postpone_waiting_launch();
+            }
+        }
+
+        schedule_waiting_tick();
+    });
+}
+
+fn schedule_game_timer_tick() {
+    schedule_delayed_task(20, |server| {
+        let game_finished = match game_session().lock() {
+            Ok(mut session) if session.state() == &GameState::Active => {
+                session.decrement_game_timer();
+                if session.game_timer() == 0 {
+                    session.set_state(GameState::Ended);
+                    true
+                } else {
+                    false
+                }
+            }
+            Ok(_) => return,
+            Err(error) => {
+                tracing::error!("Verrouillage de la session de jeu impossible : {error}");
+                return;
+            }
+        };
+
+        if game_finished {
+            crate::management::bonus::clear(&server);
+            server.broadcast("La partie Infected est terminée !");
+            return;
+        }
+
+        match crate::management::player::has_survivors(&server) {
+            Ok(false) => {
+                match game_session().lock() {
+                    Ok(mut session) => session.set_state(GameState::Ended),
+                    Err(error) => {
+                        tracing::error!("Verrouillage de la session de jeu impossible : {error}")
+                    }
+                }
+                crate::management::bonus::clear(&server);
+                server.broadcast("Tous les survivants ont été infectés. La partie est terminée !");
+            }
+            Ok(true) => schedule_game_timer_tick(),
+            Err(error) => {
+                tracing::error!("Impossible de vérifier les survivants : {error}");
+                schedule_game_timer_tick();
+            }
+        }
+    });
+}
+
+fn schedule_survivor_arrow_tick() {
+    schedule_delayed_task(20 * 20, |server| {
+        let is_active = match game_session().lock() {
+            Ok(session) => session.state() == &GameState::Active,
+            Err(error) => {
+                tracing::error!("Verrouillage de la session de jeu impossible : {error}");
+                return;
+            }
+        };
+        if !is_active {
+            return;
+        }
+
+        if let Err(error) = crate::management::player::give_survivor_arrows(&server) {
+            tracing::error!("Impossible de distribuer les flèches aux survivants : {error}");
+        }
+        schedule_survivor_arrow_tick();
     });
 }
 
@@ -58,7 +226,7 @@ impl CommandHandler for LaunchExecutor {
             .as_player()
             .ok_or_else(|| CommandError::InvalidRequirement)?;
 
-        if !player.has_permission("infected::admin") {
+        if !player.has_permission("Infected::admin") {
             sender.send_message(TextComponent::text(
                 "Vous n'avez pas la permission d'exécuter cette commande.",
             ));
@@ -74,14 +242,22 @@ impl CommandHandler for LaunchExecutor {
             }
         };
 
-        // Permet de changer l'état du jeu à "Active" pour indiquer que le mini-jeu a commencé
-        // C'est dans un bloc pour s'assurer que le verrou concernant la session est libéré après utilisation
-        // pour éviter les problèmes de concurrence et de blocage.
         {
-            let mut session = game_session()
-                .lock()
-                .expect("Echec du verrouillage de la session de jeu");
-            session.set_state(GameState::Active);
+            let mut session = match game_session().lock() {
+                Ok(session) => session,
+                Err(error) => {
+                    sender.send_message(TextComponent::text(&format!(
+                        "Impossible de verrouiller la session de jeu : {error}"
+                    )));
+                    return Ok(0);
+                }
+            };
+            if !session.begin_launch_countdown() {
+                sender.send_message(TextComponent::text(
+                    "Une partie est déjà en cours ou son lancement est déjà programmé.",
+                ));
+                return Ok(0);
+            }
         }
 
         schedule_countdown(world.get_name(), 5, 0);

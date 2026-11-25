@@ -12,17 +12,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip3
-      # Variante si wasm32-wasip3 n'est pas encore disponible en stable :
-      # - uses: dtolnay/rust-toolchain@nightly
-      #   with:
-      #     components: rust-src
-      # et remplacer l'étape Build par :
-      #   cargo build --release -Zbuild-std=std,panic_abort
+          targets: wasm32-wasip2
 
       - uses: Swatinem/rust-cache@v2.9.3 
 
@@ -43,7 +37,7 @@ jobs:
 
       - name: Préparer l'artefact
         run: |
-          cp target/wasm32-wasip3/release/infected.wasm \
+          cp target/wasm32-wasip2/release/infected.wasm \
              "infected-${GITHUB_REF_NAME}.wasm"
           sha256sum "infected-${GITHUB_REF_NAME}.wasm" > "infected-${GITHUB_REF_NAME}.wasm.sha256"
 
