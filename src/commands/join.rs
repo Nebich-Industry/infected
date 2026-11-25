@@ -3,6 +3,7 @@ use pumpkin_plugin_api::{
     command::{CommandError, CommandSender, ConsumedArgs},
     commands::CommandHandler,
     text::TextComponent,
+    wit::pumpkin::plugin::common::GameMode,
 };
 
 use crate::management::world::current_world;
@@ -23,7 +24,7 @@ impl CommandHandler for JoinExecutor {
             .as_player()
             .ok_or_else(|| CommandError::InvalidRequirement)?;
 
-        if !player.has_permission("infected::join") {
+        if !player.has_permission("Infected::join") {
             sender.send_message(TextComponent::text(
                 "Vous n'avez pas la permission de rejoindre le mini jeu Infected.",
             ));
@@ -38,8 +39,18 @@ impl CommandHandler for JoinExecutor {
             }
         };
 
+        if !player.set_gamemode(GameMode::Adventure) {
+            sender.send_message(TextComponent::text(
+                "Impossible de passer en mode aventure.",
+            ));
+        }
+
         // Vérifie si le joueur est déjà dans le monde
         if is_already_in_world(&player.get_world().get_name(), &world.get_name()) {
+            if let Err(error) = crate::management::player::add_player(&player) {
+                sender.send_message(TextComponent::text(&error));
+                return Ok(0);
+            }
             sender.send_message(TextComponent::text("Vous êtes déjà dans le monde !"));
             return Ok(0);
         }
@@ -51,8 +62,12 @@ impl CommandHandler for JoinExecutor {
             Some(player.get_yaw()),
             Some(player.get_pitch()),
         );
+        if let Err(error) = crate::management::player::add_player(&player) {
+            sender.send_message(TextComponent::text(&error));
+            return Ok(0);
+        }
         sender.send_message(TextComponent::text(
-            "Vous avez rejoint le monde avec succès !",
+            "Vous avez rejoint le monde avec succès ! Choisissez votre classe avec /infected class.",
         ));
         Ok(1)
     }

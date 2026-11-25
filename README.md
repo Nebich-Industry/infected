@@ -29,6 +29,20 @@ Les coordonnées `spawn` déterminent le point d'arrivée de `/infected join`; `
 
 ## Développement
 
+### Lancer Pumpkin avec Docker
+
+Les données du serveur sont conservées dans `dev-server/`, dans le projet. Pour construire le plugin et le charger au démarrage du serveur, exécutez ces commandes depuis la racine du dépôt avec PowerShell :
+
+```powershell
+cargo build --release
+New-Item -ItemType Directory -Force dev-server\plugins | Out-Null
+Copy-Item target\wasm32-wasip2\release\infected.wasm dev-server\plugins\infected.wasm -Force
+docker compose up -d
+docker compose logs -f pumpkin
+```
+
+Pumpkin charge les plugins `.wasm` placés dans `dev-server/plugins/`. Après une modification du plugin, reconstruisez-le, recopiez le fichier et redémarrez le serveur avec `docker compose restart pumpkin`.
+
 Pour lancer des tests unitaires en local il faut executer la commande :
 
 ```bash

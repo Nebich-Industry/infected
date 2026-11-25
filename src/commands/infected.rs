@@ -14,7 +14,16 @@ impl CommandHandler for InfectedExecutor {
         _args: ConsumedArgs,
     ) -> Result<i32, CommandError> {
         sender.send_message(TextComponent::text("Utilisation: /infected <command>"));
-        sender.send_message(TextComponent::text("Commandes disponibles: join"));
+        if sender
+            .as_player()
+            .is_some_and(|player| player.has_permission("Infected::admin"))
+        {
+            sender.send_message(TextComponent::text(
+                "Commandes disponibles: join, class, admin",
+            ));
+        } else {
+            sender.send_message(TextComponent::text("Commandes disponibles: join, class"));
+        }
         Ok(0)
     }
 }

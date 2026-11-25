@@ -162,6 +162,16 @@ pub fn current_world(server: &Server) -> Result<(World, WorldConfig), String> {
     Ok((world, config))
 }
 
+pub fn is_managed_world(name: &str) -> Result<bool, String> {
+    let manager = world_manager()
+        .lock()
+        .map_err(|_| "Verrouillage du gestionnaire de mondes impossible.".to_string())?;
+    let manager = manager
+        .as_ref()
+        .ok_or_else(|| "Le gestionnaire de mondes n'est pas initialisé.".to_string())?;
+    Ok(manager.worlds.contains_key(name))
+}
+
 fn configure_world(world: &World, config: &WorldConfig) {
     let border = world.get_world_border();
     border.set_center(config.border.center.x, config.border.center.z);
