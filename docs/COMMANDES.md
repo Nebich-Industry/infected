@@ -22,7 +22,7 @@ Le plugin enregistre la commande racine `/infected`, avec `/inf` comme alias.
 | `/infected` ou `/inf` | `Infected::join` (permission donnée à l'enregistrement de la commande) | Affiche l'aide d'utilisation. |
 | `/infected join` ou `/inf join` | `Infected::join` | Téléporte le joueur dans le monde courant choisi depuis `config.yml`, aux coordonnées `spawn` configurées, et l'enregistre comme survivant ou zombie selon l'état de la partie. S'il s'y trouve déjà, vérifie seulement son enregistrement. |
 | `/infected class <archer\|doctor\|ninja>` | `Infected::join` | Choisit la classe du survivant. |
-| `/infected admin launch` ou `/inf admin launch` | `Infected::admin` | Affiche un décompte de 5 secondes, puis démarre la partie. `/infected launch` reste disponible comme alias historique. |
+| `/infected admin launch` ou `/inf admin launch` | `Infected::admin` | Affiche un décompte de 5 secondes, inscrit les joueurs présents dans le monde du mini-jeu, puis démarre la partie. `/infected launch` reste disponible comme alias historique. |
 | `/infected admin transform` ou `/inf admin transform` | `Infected::admin` | Transforme l'administrateur en zombie pendant une partie en cours. |
 
 Les commandes de jeu doivent être exécutées par un joueur. Les joueurs rejoignent en mode aventure. Une partie démarre automatiquement après deux minutes si le monde courant contient au moins trois joueurs ; sinon, l'attente est prolongée de 30 secondes. Les survivants reçoivent une épée, un arc et cinq flèches au lancement, puis une flèche toutes les 20 secondes. Une partie s'achève après cinq minutes ou lorsqu'il ne reste plus de survivants.

@@ -5,7 +5,7 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-use pumpkin_plugin_api::{Context, Server, server::Dimension, world::World};
+use pumpkin_plugin_api::{Context, Server, common::BlockPos, server::Dimension, world::World};
 use serde::Deserialize;
 
 const DEFAULT_CONFIG: &str = include_str!("default_config.yml");
@@ -160,6 +160,53 @@ pub fn current_world(server: &Server) -> Result<(World, WorldConfig), String> {
         .get_world_by_name(&name)
         .ok_or_else(|| format!("Le monde configuré {name} n'est pas chargé."))?;
     Ok((world, config))
+}
+
+pub fn safe_spawn_position(world: &World, spawn: &Coordinates) -> Result<(f64, f64, f64), String> {
+    let block_x = block_coordinate(spawn.x)
+        .ok_or_else(|| "La coordonnée X du spawn est invalide.".to_string())?;
+    let block_z = block_coordinate(spawn.z)
+        .ok_or_else(|| "La coordonnée Z du spawn est invalide.".to_string())?;
+    let min_y = world.get_min_y();
+    let start_y = block_coordinate(spawn.y.ceil())
+        .ok_or_else(|| "La coordonnée Y du spawn est invalide.".to_string())?
+        .max(min_y);
+    let max_feet_y = world
+        .get_top_block_y(block_x, block_z)
+        .saturating_add(1)
+        .max(start_y)
+        .min(i32::MAX - 1);
+
+    for feet_y in start_y..=max_feet_y {
+        let head_y = feet_y + 1;
+        if world
+            .get_block_state(BlockPos {
+                x: block_x,
+                y: feet_y,
+                z: block_z,
+            })
+            .is_air
+            && world
+                .get_block_state(BlockPos {
+                    x: block_x,
+                    y: head_y,
+                    z: block_z,
+                })
+                .is_air
+        {
+            return Ok((spawn.x, f64::from(feet_y), spawn.z));
+        }
+    }
+
+    Err("Aucun emplacement libre n'a été trouvé au-dessus du spawn.".to_string())
+}
+
+fn block_coordinate(coordinate: f64) -> Option<i32> {
+    let coordinate = coordinate.floor();
+    if coordinate < f64::from(i32::MIN) || coordinate >= 2_147_483_648.0 {
+        return None;
+    }
+    Some(coordinate as i32)
 }
 
 pub fn is_managed_world(name: &str) -> Result<bool, String> {

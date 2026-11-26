@@ -17,7 +17,7 @@ use pumpkin_plugin_api::{
 
 use crate::management::{
     session::{GameState, game_session},
-    world::{current_world, is_managed_world},
+    world::{current_world, is_managed_world, safe_spawn_position},
 };
 
 const SURVIVOR_TEAM: &str = "TEAM_SURVIVORS";
@@ -210,6 +210,14 @@ pub fn add_player(player: &Player) -> Result<(), String> {
     Ok(())
 }
 
+pub fn register_current_world_players(server: &Server) -> Result<(), String> {
+    let (world, _) = current_world(server)?;
+    for player in server.get_players_in_world(world) {
+        add_player(&player)?;
+    }
+    Ok(())
+}
+
 pub fn get_player(player: &Player) -> Result<Option<InfectedPlayer>, String> {
     players()
         .lock()
@@ -353,6 +361,16 @@ pub fn transform_in_survivor(player: &Player) -> Result<(), String> {
     }
 
     set_scoreboard_team(player, false);
+    Ok(())
+}
+
+pub fn reset_zombies_to_survivors(server: &Server) -> Result<(), String> {
+    let (world, _) = current_world(server)?;
+    for player in server.get_players_in_world(world) {
+        if get_player(&player)?.is_some_and(|infected_player| infected_player.is_zombie()) {
+            transform_in_survivor(&player)?;
+        }
+    }
     Ok(())
 }
 
@@ -539,6 +557,107 @@ fn damage_for_survivor(timer: u32, has_instakill_bonus: bool) -> f32 {
 
 struct PlayerDeathHandler;
 
+fn teleport_after_death(server: &Server, dead_player: &Player) {
+    let Ok((world, config)) = current_world(server) else {
+        tracing::error!("Impossible de déterminer le monde du mini-jeu");
+        return;
+    };
+
+    match safe_spawn_position(&world, &config.spawn) {
+        Ok(spawn) => dead_player.teleport_world(
+            world,
+            spawn,
+            Some(dead_player.get_yaw()),
+            Some(dead_player.get_pitch()),
+        ),
+        Err(error) => {
+            tracing::error!("Impossible de trouver un emplacement de réapparition sûr : {error}")
+        }
+    }
+}
+
+fn prepare_dead_player(server: &Server, dead_player: &Player) -> bool {
+    match get_player(dead_player) {
+        Ok(Some(infected_player)) => {
+            tracing::debug!("Mort du joueur infecté {}", infected_player.name());
+            let was_zombie = infected_player.is_zombie();
+            if infected_player.is_survivor()
+                && let Err(error) = transform_in_zombie(dead_player)
+            {
+                tracing::error!("Impossible de transformer le joueur en zombie : {error}");
+            }
+            teleport_after_death(server, dead_player);
+            was_zombie
+        }
+        Ok(None) => false,
+        Err(error) => {
+            tracing::error!("Impossible de lire le joueur mort : {error}");
+            false
+        }
+    }
+}
+
+fn take_last_attacker(dead_id: PlayerId) -> Option<(PlayerId, Instant)> {
+    match last_attackers().lock() {
+        Ok(mut attackers) => attackers.remove(&dead_id),
+        Err(error) => {
+            tracing::error!("Verrouillage des attaquants impossible : {error}");
+            None
+        }
+    }
+}
+
+fn add_zombie_kill(attacker_id: PlayerId, dead_id: PlayerId) {
+    match players().lock() {
+        Ok(mut infected_players) => {
+            if let Some(infected_player) = infected_players.get_mut(&attacker_id) {
+                infected_player.add_zombie_kill(dead_id);
+            }
+        }
+        Err(error) => {
+            tracing::error!("Verrouillage des joueurs infectés impossible : {error}");
+        }
+    }
+}
+
+fn heal_doctor(attacker: &Player, dead_was_zombie: bool) {
+    if !dead_was_zombie {
+        return;
+    }
+    match get_player(attacker) {
+        Ok(Some(infected_player)) if infected_player.role() == Some(SurvivorRole::Doctor) => {
+            if random_number(100) <= 20 {
+                attacker.set_health((attacker.get_health() + 4.0).min(20.0));
+            }
+        }
+        Ok(_) => {}
+        Err(error) => tracing::error!("Impossible de lire le tueur : {error}"),
+    }
+}
+
+fn apply_death_credit(server: &Server, dead_id: PlayerId, dead_was_zombie: bool) {
+    let Some((attacker_id, timestamp)) = take_last_attacker(dead_id) else {
+        return;
+    };
+    if timestamp.elapsed() > KILL_CREDIT_WINDOW {
+        return;
+    }
+    let Some(attacker) = find_player(server, attacker_id) else {
+        return;
+    };
+
+    match get_player(&attacker) {
+        Ok(Some(infected_player)) if infected_player.is_zombie() => {
+            add_zombie_kill(attacker_id, dead_id);
+        }
+        Ok(Some(infected_player)) if infected_player.is_survivor() => {
+            heal_doctor(&attacker, dead_was_zombie);
+        }
+        Ok(_) => {}
+        Err(error) => tracing::error!("Impossible de lire le tueur : {error}"),
+    }
+}
+
 impl EventHandler<PlayerDeathEvent> for PlayerDeathHandler {
     fn handle(
         &self,
@@ -547,76 +666,8 @@ impl EventHandler<PlayerDeathEvent> for PlayerDeathHandler {
     ) -> EventData<PlayerDeathEvent> {
         let dead_player = &event.player;
         let dead_id = player_id(dead_player);
-        let dead_was_zombie = match get_player(dead_player) {
-            Ok(Some(infected_player)) => {
-                tracing::debug!("Mort du joueur infecté {}", infected_player.name());
-                let dead_was_zombie = infected_player.is_zombie();
-                if infected_player.is_survivor()
-                    && let Err(error) = transform_in_zombie(dead_player)
-                {
-                    tracing::error!("Impossible de transformer le joueur en zombie : {error}");
-                }
-
-                match current_world(&server) {
-                    Ok((world, config)) => dead_player.teleport_world(
-                        world,
-                        (config.spawn.x, config.spawn.y, config.spawn.z),
-                        Some(dead_player.get_yaw()),
-                        Some(dead_player.get_pitch()),
-                    ),
-                    Err(error) => {
-                        tracing::error!("Impossible de téléporter le joueur mort : {error}")
-                    }
-                }
-                dead_was_zombie
-            }
-            Ok(None) => false,
-            Err(error) => {
-                tracing::error!("Impossible de lire le joueur mort : {error}");
-                false
-            }
-        };
-
-        let last_attacker = match last_attackers().lock() {
-            Ok(mut attackers) => attackers.remove(&dead_id),
-            Err(error) => {
-                tracing::error!("Verrouillage des attaquants impossible : {error}");
-                None
-            }
-        };
-        if let Some((attacker_id, timestamp)) = last_attacker
-            && timestamp.elapsed() <= KILL_CREDIT_WINDOW
-        {
-            let attacker = find_player(&server, attacker_id);
-            if let Some(attacker) = attacker {
-                match get_player(&attacker) {
-                    Ok(Some(infected_player)) if infected_player.is_zombie() => {
-                        match players().lock() {
-                            Ok(mut infected_players) => {
-                                if let Some(infected_player) =
-                                    infected_players.get_mut(&attacker_id)
-                                {
-                                    infected_player.add_zombie_kill(dead_id);
-                                }
-                            }
-                            Err(error) => tracing::error!(
-                                "Verrouillage des joueurs infectés impossible : {error}"
-                            ),
-                        }
-                    }
-                    Ok(Some(infected_player))
-                        if infected_player.role() == Some(SurvivorRole::Doctor)
-                            && dead_was_zombie =>
-                    {
-                        if random_number(100) <= 20 {
-                            attacker.set_health((attacker.get_health() + 4.0).min(20.0));
-                        }
-                    }
-                    Ok(_) => {}
-                    Err(error) => tracing::error!("Impossible de lire le tueur : {error}"),
-                }
-            }
-        }
+        let dead_was_zombie = prepare_dead_player(&server, dead_player);
+        apply_death_credit(&server, dead_id, dead_was_zombie);
         event
     }
 }
