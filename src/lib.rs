@@ -75,7 +75,6 @@ impl Plugin for InfectedPlugin {
                         crate::management::player::SurvivorRole::Ninja,
                     ))),
             )
-            .then(CommandNode::literal("launch").execute(LaunchExecutor))
             .then(
                 CommandNode::literal("admin")
                     .execute(AdminExecutor)

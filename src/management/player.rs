@@ -17,7 +17,7 @@ use pumpkin_plugin_api::{
 
 use crate::management::{
     session::{GameState, game_session},
-    world::{current_world, is_managed_world},
+    world::{current_world, is_managed_world, safe_spawn_position},
 };
 
 const SURVIVOR_TEAM: &str = "TEAM_SURVIVORS";
@@ -210,6 +210,14 @@ pub fn add_player(player: &Player) -> Result<(), String> {
     Ok(())
 }
 
+pub fn register_current_world_players(server: &Server) -> Result<(), String> {
+    let (world, _) = current_world(server)?;
+    for player in server.get_players_in_world(world) {
+        add_player(&player)?;
+    }
+    Ok(())
+}
+
 pub fn get_player(player: &Player) -> Result<Option<InfectedPlayer>, String> {
     players()
         .lock()
@@ -353,6 +361,16 @@ pub fn transform_in_survivor(player: &Player) -> Result<(), String> {
     }
 
     set_scoreboard_team(player, false);
+    Ok(())
+}
+
+pub fn reset_zombies_to_survivors(server: &Server) -> Result<(), String> {
+    let (world, _) = current_world(server)?;
+    for player in server.get_players_in_world(world) {
+        if get_player(&player)?.is_some_and(|infected_player| infected_player.is_zombie()) {
+            transform_in_survivor(&player)?;
+        }
+    }
     Ok(())
 }
 
@@ -558,12 +576,19 @@ impl EventHandler<PlayerDeathEvent> for PlayerDeathHandler {
                 }
 
                 match current_world(&server) {
-                    Ok((world, config)) => dead_player.teleport_world(
-                        world,
-                        (config.spawn.x, config.spawn.y, config.spawn.z),
-                        Some(dead_player.get_yaw()),
-                        Some(dead_player.get_pitch()),
-                    ),
+                    Ok((world, config)) => match safe_spawn_position(&world, &config.spawn) {
+                        Ok(spawn) => dead_player.teleport_world(
+                            world,
+                            spawn,
+                            Some(dead_player.get_yaw()),
+                            Some(dead_player.get_pitch()),
+                        ),
+                        Err(error) => {
+                            tracing::error!(
+                                "Impossible de trouver un emplacement de réapparition sûr : {error}"
+                            )
+                        }
+                    },
                     Err(error) => {
                         tracing::error!("Impossible de téléporter le joueur mort : {error}")
                     }

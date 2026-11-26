@@ -6,7 +6,7 @@ use pumpkin_plugin_api::{
     wit::pumpkin::plugin::common::GameMode,
 };
 
-use crate::management::world::current_world;
+use crate::management::world::{current_world, safe_spawn_position};
 
 fn is_already_in_world(current_world: &str, target_world: &str) -> bool {
     current_world == target_world
@@ -55,10 +55,18 @@ impl CommandHandler for JoinExecutor {
             return Ok(0);
         }
 
+        let spawn = match safe_spawn_position(&world, &config.spawn) {
+            Ok(spawn) => spawn,
+            Err(error) => {
+                sender.send_message(TextComponent::text(&error));
+                return Ok(0);
+            }
+        };
+
         // Ajoute le joueur au monde
         player.teleport_world(
             world,
-            (config.spawn.x, config.spawn.y, config.spawn.z),
+            spawn,
             Some(player.get_yaw()),
             Some(player.get_pitch()),
         );

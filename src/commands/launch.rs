@@ -2,7 +2,7 @@ use pumpkin_plugin_api::{
     Server,
     command::{CommandError, CommandSender, ConsumedArgs},
     commands::CommandHandler,
-    player::{Sound, SoundCategory},
+    player::SoundCategory,
     scheduler::schedule_delayed_task,
     text::TextComponent,
 };
@@ -38,6 +38,13 @@ fn postpone_waiting_launch() {
     }
 }
 
+fn restore_zombies_after_game(server: &Server) {
+    crate::management::bonus::clear(server);
+    if let Err(error) = crate::management::player::reset_zombies_to_survivors(server) {
+        tracing::error!("Impossible de rétablir les zombies en survivants : {error}");
+    }
+}
+
 fn schedule_countdown(world_name: String, seconds: u32, delay_ticks: u64) {
     schedule_delayed_task(delay_ticks, move |server| {
         let Some(world) = server.get_world_by_name(&world_name) else {
@@ -49,10 +56,15 @@ fn schedule_countdown(world_name: String, seconds: u32, delay_ticks: u64) {
 
         for player in &players {
             player.show_title(TextComponent::text(&seconds.to_string()));
-            player.play_sound(Sound::BlockNoteBlockHarp, SoundCategory::Master, 100.0, 1.0);
+            player.play_custom_sound(
+                "minecraft:block.note_block.harp",
+                SoundCategory::Master,
+                100.0,
+                1.0,
+            );
         }
 
-        if !finish_countdown(seconds, || match start_game(&server, true) {
+        if !finish_countdown(seconds, || match start_game(&server) {
             Ok(()) => server
                 .broadcast("Le mini jeu Infected a été lancé ! Bonne chance à tous les joueurs !"),
             Err(error) => {
@@ -65,7 +77,7 @@ fn schedule_countdown(world_name: String, seconds: u32, delay_ticks: u64) {
     });
 }
 
-fn start_game(server: &Server, is_admin_launch: bool) -> Result<(), String> {
+fn start_game(server: &Server) -> Result<(), String> {
     if game_session()
         .lock()
         .map_err(|error| format!("Verrouillage de la session de jeu impossible : {error}"))?
@@ -75,9 +87,8 @@ fn start_game(server: &Server, is_admin_launch: bool) -> Result<(), String> {
         return Err("Une partie Infected est déjà en cours.".to_string());
     }
 
-    if !is_admin_launch {
-        crate::management::player::choose_first_zombies(server)?;
-    }
+    crate::management::player::register_current_world_players(server)?;
+    crate::management::player::choose_first_zombies(server)?;
 
     crate::management::bonus::clear(server);
     crate::management::player::give_starter_items(server)?;
@@ -134,7 +145,7 @@ fn schedule_waiting_tick() {
             };
 
             if enough_players {
-                if let Err(error) = start_game(&server, false) {
+                if let Err(error) = start_game(&server) {
                     tracing::error!("Impossible de lancer automatiquement la partie : {error}");
                     postpone_waiting_launch();
                 } else {
@@ -169,7 +180,7 @@ fn schedule_game_timer_tick() {
         };
 
         if game_finished {
-            crate::management::bonus::clear(&server);
+            restore_zombies_after_game(&server);
             server.broadcast("La partie Infected est terminée !");
             return;
         }
@@ -182,7 +193,7 @@ fn schedule_game_timer_tick() {
                         tracing::error!("Verrouillage de la session de jeu impossible : {error}")
                     }
                 }
-                crate::management::bonus::clear(&server);
+                restore_zombies_after_game(&server);
                 server.broadcast("Tous les survivants ont été infectés. La partie est terminée !");
             }
             Ok(true) => schedule_game_timer_tick(),
